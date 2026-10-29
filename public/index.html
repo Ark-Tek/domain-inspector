@@ -1,0 +1,582 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Domain Inspector</title>
+  <meta name="description" content="Enter a business's domain and see how its website, email, hosting and registration are set up.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b5563'/%3E%3Ccircle cx='16' cy='16' r='7' fill='none' stroke='white' stroke-width='3'/%3E%3C/svg%3E">
+  <style>
+    :root {
+      --paper: #f2f5f7;
+      --sheet: #ffffff;
+      --ink: #14232e;
+      --muted: #55646f;
+      --rule: #d6dee4;
+      --sea: #0b5563;
+      --on-sea: #ffffff;
+      --pass: #1b7a4b;
+      --improve: #a86500;
+      --fail: #b3261e;
+      --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+      --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --paper: #0e161c;
+        --sheet: #14202a;
+        --ink: #e6edf2;
+        --muted: #93a3af;
+        --rule: #263540;
+        --sea: #5cc0d3;
+        --on-sea: #08202a;
+        --pass: #5fcb93;
+        --improve: #e9b04a;
+        --fail: #ff8d82;
+      }
+    }
+
+    * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: var(--sans);
+      font-size: 1rem;
+      line-height: 1.55;
+    }
+    .page { max-width: 52rem; margin: 0 auto; padding: 24px 16px 56px; }
+
+    .brand { font-weight: 650; letter-spacing: 0.01em; margin: 0 0 40px; }
+    h1 {
+      font-family: var(--serif);
+      font-weight: 600;
+      font-size: clamp(1.9rem, 6vw, 2.75rem);
+      line-height: 1.12;
+      letter-spacing: -0.01em;
+      margin: 0 0 12px;
+      max-width: 20ch;
+    }
+    .lede { margin: 0 0 24px; max-width: 58ch; color: var(--muted); }
+
+    form { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+    .field { flex: 1 1 15rem; display: flex; flex-direction: column; gap: 6px; }
+    label { font-size: 0.9rem; font-weight: 600; }
+    input[type="text"] {
+      width: 100%;
+      min-height: 48px;
+      padding: 0 14px;
+      font: inherit;
+      font-size: 1.0625rem;
+      color: var(--ink);
+      background: var(--sheet);
+      border: 1px solid var(--muted);
+      border-radius: 6px;
+    }
+    input[type="text"]::placeholder { color: var(--muted); opacity: 0.8; }
+    button {
+      font: inherit;
+      cursor: pointer;
+    }
+    .go {
+      min-height: 48px;
+      padding: 0 22px;
+      font-weight: 650;
+      color: var(--on-sea);
+      background: var(--sea);
+      border: 0;
+      border-radius: 6px;
+    }
+    .go:disabled { opacity: 0.6; cursor: progress; }
+    input:focus-visible, .go:focus-visible, .ghost:focus-visible, a:focus-visible {
+      outline: 3px solid var(--sea);
+      outline-offset: 2px;
+    }
+
+    .status { min-height: 1.6em; margin: 14px 0 0; color: var(--muted); }
+    .status.error { color: var(--fail); font-weight: 600; }
+
+    /* ---- Result sheet ---- */
+    .sheet {
+      margin-top: 28px;
+      padding: 28px 24px 12px;
+      background: var(--sheet);
+      border: 1px solid var(--rule);
+      border-radius: 6px;
+    }
+    .sheet[hidden] { display: none; }
+    .head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 8px 16px; }
+    .domain {
+      font-family: var(--serif);
+      font-weight: 600;
+      font-size: clamp(1.7rem, 5.5vw, 2.5rem);
+      line-height: 1.15;
+      margin: 0;
+      overflow-wrap: anywhere;
+    }
+    .ghost {
+      padding: 6px 12px;
+      color: var(--ink);
+      background: transparent;
+      border: 1px solid var(--rule);
+      border-radius: 6px;
+      font-size: 0.9rem;
+    }
+    .checked { margin: 4px 0 0; font-size: 0.9rem; color: var(--muted); }
+
+    .verdict { margin: 20px 0 8px; }
+    .verdict p { margin: 0 0 10px; font-weight: 600; }
+    .bar {
+      display: flex;
+      gap: 3px;
+      height: 12px;
+      clip-path: inset(0 100% 0 0 round 3px);
+      transition: clip-path 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
+    }
+    .bar.in { clip-path: inset(0 0 0 0 round 3px); }
+    .bar span { display: block; min-width: 6px; }
+    .bar .pass { background: var(--pass); }
+    .bar .improve { background: var(--improve); }
+    .bar .fail { background: var(--fail); }
+    .tally { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 10px 0 0; font-size: 0.95rem; }
+    .tally .pass { color: var(--pass); }
+    .tally .improve { color: var(--improve); }
+    .tally .fail { color: var(--fail); }
+    .tally span { font-weight: 600; }
+
+    .part { margin-top: 28px; }
+    .part h3 {
+      margin: 0;
+      padding-top: 10px;
+      border-top: 2px solid var(--ink);
+      font-size: 1.05rem;
+      font-weight: 650;
+    }
+    .intro { margin: 2px 0 0; font-size: 0.92rem; color: var(--muted); max-width: 60ch; }
+
+    .row {
+      display: grid;
+      grid-template-columns: 6.25rem minmax(0, 1fr);
+      grid-template-areas: "v k" ". d";
+      column-gap: 12px;
+      row-gap: 2px;
+      padding: 12px 0;
+      border-top: 1px solid var(--rule);
+    }
+    .rows .row:first-child { border-top: 0; }
+    .row .v { grid-area: v; font-weight: 650; font-size: 0.95rem; }
+    .row .k { grid-area: k; font-weight: 600; }
+    .row .d { grid-area: d; min-width: 0; }
+    .v.pass { color: var(--pass); }
+    .v.improve { color: var(--improve); }
+    .v.fail { color: var(--fail); }
+    .val { overflow-wrap: anywhere; }
+    .val.code { font-family: var(--mono); font-size: 0.92rem; }
+    .none { color: var(--muted); }
+    .hint { margin: 2px 0 0; font-size: 0.92rem; color: var(--muted); max-width: 60ch; }
+    .d a { color: var(--sea); text-underline-offset: 3px; }
+
+    @media (min-width: 640px) {
+      .sheet { padding: 32px 32px 16px; }
+      .row {
+        grid-template-columns: 6.25rem 10.5rem minmax(0, 1fr);
+        grid-template-areas: "v k d";
+      }
+    }
+
+    .links { display: flex; flex-wrap: wrap; gap: 6px 20px; margin: 12px 0 8px; }
+    .links a { color: var(--sea); text-underline-offset: 3px; }
+    .notes { margin: 12px 0 0; padding-left: 1.2rem; color: var(--muted); font-size: 0.92rem; }
+    .foot { margin: 20px 0 0; font-size: 0.85rem; color: var(--muted); max-width: 62ch; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .bar { transition: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <p class="brand">Domain Inspector</p>
+
+    <h1>Inspect a website before you pitch it</h1>
+    <p class="lede">Enter a business's domain to see how its website, email, hosting and registration are set up, and where there's room to improve.</p>
+
+    <form id="form" autocomplete="off">
+      <div class="field">
+        <label for="domain">Domain or website address</label>
+        <input id="domain" name="domain" type="text" inputmode="url" placeholder="clinicaejemplo.es" autocapitalize="none" spellcheck="false" required>
+      </div>
+      <button id="go" class="go" type="submit">Inspect domain</button>
+    </form>
+    <p id="status" class="status" role="status" aria-live="polite"></p>
+
+    <noscript><p>This page needs JavaScript to run the inspection.</p></noscript>
+
+    <article id="result" class="sheet" hidden aria-labelledby="result-domain"></article>
+
+    <p class="foot">Data comes from public sources: RDAP and WHOIS, DNS, IPinfo and the Internet Archive. Website checks are text-based hints, so confirm anything important by opening the site.</p>
+  </main>
+
+  <script>
+    (() => {
+      'use strict';
+
+      const $ = (id) => document.getElementById(id);
+      const form = $('form');
+      const input = $('domain');
+      const button = $('go');
+      const statusEl = $('status');
+      const out = $('result');
+      let lastData = null;
+
+      /* ---------- DOM helpers (all data is inserted as text, never as HTML) ---------- */
+
+      function el(tag, attrs = {}, ...kids) {
+        const n = document.createElement(tag);
+        for (const [k, v] of Object.entries(attrs)) {
+          if (v === undefined || v === null) continue;
+          if (k === 'class') n.className = v;
+          else n.setAttribute(k, v);
+        }
+        for (const kid of kids.flat()) n.append(kid instanceof Node ? kid : document.createTextNode(kid ?? ''));
+        return n;
+      }
+
+      function fmtDate(iso) {
+        if (!iso) return '';
+        const d = new Date(`${iso}T00:00:00Z`);
+        if (Number.isNaN(d.getTime())) return iso;
+        return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+      }
+
+      const yesNo = (v) => (v ? 'Yes' : 'No');
+
+      /* ---------- Rows: { v: verdict|null, k: label, d: value(s), h: hint, code: bool } ---------- */
+
+      function websiteRows(d) {
+        const w = d.website;
+        if (!w) return [{ v: null, k: 'Website', d: 'The check could not run.' }];
+        if (!w.reachable) {
+          return [{ v: 'fail', k: 'Website', d: 'Did not respond', h: w.error ? `Details: ${w.error}.` : '' }];
+        }
+        const rows = [];
+
+        rows.push(
+          w.status >= 400
+            ? { v: 'improve', k: 'Response', d: `HTTP ${w.status}`, h: 'Some sites block automated visits, so open it in a browser to confirm.' }
+            : { v: 'pass', k: 'Response', d: `HTTP ${w.status}` },
+        );
+
+        rows.push(
+          w.https
+            ? { v: 'pass', k: 'Secure connection', d: 'HTTPS works' }
+            : {
+                v: 'fail',
+                k: 'Secure connection',
+                d: 'The site loads without HTTPS',
+                h: w.httpsError
+                  ? `The secure version failed (${w.httpsError}). Browsers warn visitors about this.`
+                  : 'Browsers mark such sites as not secure.',
+              },
+        );
+
+        rows.push(
+          w.viewport
+            ? { v: 'pass', k: 'Mobile layout', d: 'Mobile viewport tag found' }
+            : { v: 'fail', k: 'Mobile layout', d: 'No mobile viewport tag', h: 'Without it, phones show a shrunken desktop page.' },
+        );
+
+        const s = w.loadSeconds;
+        rows.push({
+          v: s <= 2 ? 'pass' : s <= 4 ? 'improve' : 'fail',
+          k: 'Load time',
+          d: `${s.toFixed(1)} seconds`,
+          h: 'Measured from the server running this tool. Visitors on mobile data will usually wait longer.',
+        });
+
+        rows.push(
+          w.telLink
+            ? { v: 'pass', k: 'Tap to call', d: 'Phone link found' }
+            : { v: 'improve', k: 'Tap to call', d: 'No phone link', h: 'A phone number that is not a link cannot be tapped on a phone.' },
+        );
+
+        rows.push(
+          w.whatsapp
+            ? { v: 'pass', k: 'WhatsApp', d: 'WhatsApp link found' }
+            : { v: 'improve', k: 'WhatsApp', d: 'No WhatsApp link' },
+        );
+
+        rows.push(
+          w.booking
+            ? { v: 'pass', k: 'Online booking', d: 'Booking or appointment wording found', h: 'Detected from keywords such as "pedir cita" or Calendly. Confirm on the site.' }
+            : { v: 'improve', k: 'Online booking', d: 'No sign of online booking', h: 'Detected from keywords such as "pedir cita" or Calendly. Confirm on the site.' },
+        );
+
+        rows.push(
+          w.metaDescription
+            ? { v: 'pass', k: 'Search description', d: 'Meta description found' }
+            : { v: 'improve', k: 'Search description', d: 'No meta description', h: 'Google then picks its own snippet for the search result.' },
+        );
+
+        rows.push({ v: null, k: 'Built with', d: w.platform === 'unknown / custom' ? 'Unknown or custom' : w.platform });
+        rows.push({ v: null, k: 'Page title', d: w.title });
+        rows.push({
+          v: null,
+          k: 'Final address',
+          d: w.finalUrl,
+          code: true,
+          h: w.redirects && w.redirects.length ? `Reached after ${w.redirects.length} redirect${w.redirects.length === 1 ? '' : 's'}.` : '',
+        });
+        if (w.server) rows.push({ v: null, k: 'Server software', d: w.server, code: true });
+        return rows;
+      }
+
+      function registrationRows(d) {
+        const r = d.registration;
+        if (!r) {
+          return [{ v: null, k: 'Registration', d: 'Not available', h: 'Not every domain extension publishes registration data. Owner details are hidden for most .es and EU domains.' }];
+        }
+        const rows = [{ v: null, k: 'Registrar', d: r.registrar }, { v: null, k: 'Registered on', d: fmtDate(r.created) }];
+
+        if (r.expires) {
+          const n = r.daysToExpiry;
+          let verdict = null;
+          let hint = '';
+          let when = '';
+          if (n !== null) when = n < 0 ? ` (${Math.abs(n)} days ago)` : ` (in ${n} days)`;
+          if (n !== null && n < 0) {
+            verdict = 'fail';
+            hint = 'This domain has expired, so the business may be about to lose it.';
+          } else if (n !== null && n <= 60) {
+            hint = 'Renewal is close, which is a natural moment to talk about the website.';
+          }
+          rows.push({ v: verdict, k: 'Expires on', d: `${fmtDate(r.expires)}${when}`, h: hint });
+        } else {
+          rows.push({ v: null, k: 'Expires on', d: '' });
+        }
+        rows.push({ v: null, k: 'Status', d: r.status });
+        rows.push({ v: null, k: 'Data source', d: r.source, h: 'Owner details are hidden for most .es and EU domains.' });
+        return rows;
+      }
+
+      function emailRows(d) {
+        const x = d.dns;
+        const hasMail = x.mx.length > 0;
+        const rows = [];
+        rows.push(
+          hasMail
+            ? { v: null, k: 'Email provider', d: x.emailProvider }
+            : { v: 'improve', k: 'Email provider', d: 'No email set up on this domain', h: 'The business may be using free addresses such as Gmail instead.' },
+        );
+        if (hasMail) {
+          rows.push({ v: null, k: 'Mail servers', d: x.mx.map((m) => `${m.priority} ${m.exchange}`), code: true });
+          rows.push(
+            x.spf
+              ? { v: 'pass', k: 'SPF', d: 'Record found', h: 'Helps stop other people sending email in the business\'s name.' }
+              : { v: 'improve', k: 'SPF', d: 'No record', h: 'Without it, the business\'s email is more likely to land in spam.' },
+          );
+          rows.push(
+            x.dmarc
+              ? { v: 'pass', k: 'DMARC', d: 'Record found' }
+              : { v: 'improve', k: 'DMARC', d: 'No record' },
+          );
+        }
+        return rows;
+      }
+
+      function hostingRows(d) {
+        const x = d.dns;
+        const h = d.hosting;
+        const ip = x.a[0] || x.aaaa[0];
+        const rows = [];
+        if (!ip) {
+          rows.push({ v: 'fail', k: 'IP address', d: 'The domain does not point to a server', h: 'No A or AAAA record was found.' });
+        } else {
+          rows.push({ v: null, k: 'IP address', d: ip, code: true });
+          rows.push({ v: null, k: 'Hosting provider', d: h ? h.org : 'Lookup failed' });
+          if (h && (h.city || h.country)) rows.push({ v: null, k: 'Server location', d: [h.city, h.country].filter(Boolean).join(', ') });
+          if (h && h.hostname) rows.push({ v: null, k: 'Reverse hostname', d: h.hostname, code: true });
+        }
+        rows.push({ v: null, k: 'Nameservers', d: x.ns, code: true });
+        return rows;
+      }
+
+      function historyRows(d) {
+        const wb = d.wayback;
+        if (!wb) return [{ v: null, k: 'Internet Archive', d: 'The check could not run.' }];
+        const rows = [];
+        rows.push({ v: null, k: 'First copy saved', d: fmtDate(wb.first) || 'No copies found', h: wb.first ? 'Shows roughly how long the site has been online.' : '' });
+        rows.push({ v: null, k: 'Latest copy saved', d: fmtDate(wb.last) || 'No copies found', h: wb.last ? 'The most recent copy the archive made, not necessarily the last time the site changed.' : '' });
+        rows.push({
+          v: null,
+          k: 'Browse copies',
+          d: el('a', { href: wb.browseUrl, target: '_blank', rel: 'noopener noreferrer' }, 'Open the archive calendar'),
+          h: 'Compare an old copy with today\'s site to see how much it has changed.',
+        });
+        return rows;
+      }
+
+      /* ---------- Rendering ---------- */
+
+      const SYMBOL = { pass: '●', improve: '▲', fail: '■' };
+      const LABEL = { pass: 'Pass', improve: 'Improve', fail: 'Fail' };
+
+      function renderRow(s) {
+        const dd = el('div', { class: 'd' });
+        const values = (Array.isArray(s.d) ? s.d : [s.d]).filter((x) => x !== '' && x !== null && x !== undefined);
+        if (!values.length) dd.append(el('span', { class: 'none' }, 'Not available'));
+        for (const x of values) dd.append(el('div', { class: s.code ? 'val code' : 'val' }, x));
+        if (s.h) dd.append(el('p', { class: 'hint' }, s.h));
+
+        const verdict = s.v
+          ? el('div', { class: `v ${s.v}` }, el('span', { 'aria-hidden': 'true' }, `${SYMBOL[s.v]} `), LABEL[s.v])
+          : el('div', { class: 'v' });
+        return el('div', { class: 'row' }, verdict, el('div', { class: 'k' }, s.k), dd);
+      }
+
+      function renderPart(title, rows, intro) {
+        return el(
+          'section',
+          { class: 'part' },
+          el('h3', {}, title),
+          intro ? el('p', { class: 'intro' }, intro) : null,
+          el('div', { class: 'rows' }, rows.map(renderRow)),
+        );
+      }
+
+      function render(d) {
+        const parts = [
+          ['Website', websiteRows(d), 'What a visitor meets when they open the site.'],
+          ['Email', emailRows(d)],
+          ['Hosting and DNS', hostingRows(d)],
+          ['Domain registration', registrationRows(d)],
+          ['History', historyRows(d)],
+        ];
+
+        const tally = { pass: 0, improve: 0, fail: 0 };
+        for (const [, rows] of parts) for (const r of rows) if (r.v) tally[r.v] += 1;
+        const attention = tally.improve + tally.fail;
+        const total = tally.pass + attention;
+
+        const enc = encodeURIComponent(d.domain);
+        const ip = d.dns.a[0] || d.dns.aaaa[0];
+        const tools = [
+          ['ICANN Lookup', `https://lookup.icann.org/en/lookup?name=${enc}`],
+          ['who.is', `https://who.is/whois/${enc}`],
+          ['whois.com', `https://www.whois.com/whois/${enc}`],
+          ['NSLookup.io', `https://www.nslookup.io/domains/${enc}/dns-records/`],
+          ['DomainTools', `https://whois.domaintools.com/${enc}`],
+          ip ? ['IPinfo', `https://ipinfo.io/${encodeURIComponent(ip)}`] : null,
+          ['Wayback Machine', `https://web.archive.org/web/*/${enc}`],
+        ].filter(Boolean);
+
+        const copy = el('button', { class: 'ghost', type: 'button' }, 'Copy JSON');
+        copy.addEventListener('click', async () => {
+          try {
+            await navigator.clipboard.writeText(JSON.stringify(lastData, null, 2));
+            copy.textContent = 'Copied';
+          } catch {
+            copy.textContent = 'Copy failed';
+          }
+          setTimeout(() => { copy.textContent = 'Copy JSON'; }, 1800);
+        });
+
+        const bar = el('div', { class: 'bar', role: 'img', 'aria-label': `${tally.pass} pass, ${tally.improve} improve, ${tally.fail} fail` });
+        for (const k of ['pass', 'improve', 'fail']) {
+          if (tally[k]) {
+            const seg = el('span', { class: k });
+            seg.style.flex = String(tally[k]);
+            bar.append(seg);
+          }
+        }
+
+        const summary =
+          total === 0
+            ? 'No checks could run for this domain.'
+            : attention === 0
+              ? 'Nothing stands out. This site passes every check.'
+              : `${attention} of ${total} checks ${attention === 1 ? 'needs' : 'need'} attention.`;
+
+        const errs = d.errors && d.errors.length
+          ? el('section', { class: 'part' }, el('h3', {}, 'Checks that could not finish'), el('ul', { class: 'notes' }, d.errors.map((e) => el('li', {}, e))))
+          : null;
+
+        out.replaceChildren(
+          el('div', { class: 'head' },
+            el('div', {},
+              el('h2', { class: 'domain', id: 'result-domain' }, d.domain),
+              el('p', { class: 'checked' }, `Checked ${new Date(d.checkedAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}`),
+            ),
+            copy,
+          ),
+          el('div', { class: 'verdict' },
+            el('p', {}, summary),
+            total ? bar : null,
+            total
+              ? el('p', { class: 'tally' },
+                  el('span', { class: 'pass' }, `${SYMBOL.pass} ${tally.pass} pass`),
+                  el('span', { class: 'improve' }, `${SYMBOL.improve} ${tally.improve} improve`),
+                  el('span', { class: 'fail' }, `${SYMBOL.fail} ${tally.fail} fail`),
+                )
+              : null,
+          ),
+          ...parts.map(([title, rows, intro]) => renderPart(title, rows, intro)),
+          el('section', { class: 'part' },
+            el('h3', {}, 'Open in other tools'),
+            el('div', { class: 'links' }, tools.map(([name, href]) => el('a', { href, target: '_blank', rel: 'noopener noreferrer' }, name))),
+          ),
+          errs,
+        );
+        out.hidden = false;
+        requestAnimationFrame(() => requestAnimationFrame(() => bar.classList.add('in')));
+      }
+
+      /* ---------- Running an inspection ---------- */
+
+      function setStatus(text, isError = false) {
+        statusEl.textContent = text;
+        statusEl.className = isError ? 'status error' : 'status';
+      }
+
+      async function run(value) {
+        const v = value.trim();
+        if (!v) return;
+        setStatus('Checking registration, DNS, hosting, the website and its archive history. This can take up to 20 seconds.');
+        button.disabled = true;
+        out.hidden = true;
+        out.setAttribute('aria-busy', 'true');
+        try {
+          const r = await fetch(`/api/lookup?domain=${encodeURIComponent(v)}`);
+          let data = null;
+          try { data = await r.json(); } catch { /* handled below */ }
+          if (!r.ok || !data) throw new Error((data && data.error) || 'The lookup failed. Please try again.');
+          lastData = data;
+          render(data);
+          setStatus('');
+          history.replaceState(null, '', `?d=${encodeURIComponent(data.domain)}`);
+          out.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+        } catch (err) {
+          setStatus(err.message, true);
+        } finally {
+          button.disabled = false;
+          out.removeAttribute('aria-busy');
+        }
+      }
+
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        run(input.value);
+      });
+
+      const preset = new URLSearchParams(location.search).get('d');
+      if (preset) {
+        input.value = preset;
+        run(preset);
+      }
+    })();
+  </script>
+</body>
+</html>

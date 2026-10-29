@@ -1,0 +1,13 @@
+{
+  "name": "domain-inspector",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Enter a domain and see how its website, email, hosting and registration are set up.",
+  "scripts": {
+    "dev": "node dev-server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
